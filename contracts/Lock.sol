@@ -3,6 +3,7 @@ pragma solidity ^0.8.9;
 
 // Import this file to use console.log
 import "hardhat/console.sol";
+// Chainlink imports
 
 contract Lock {
     uint public unlockTime;
@@ -30,5 +31,14 @@ contract Lock {
         emit Withdrawal(address(this).balance, block.timestamp);
 
         owner.transfer(address(this).balance);
+    }
+
+    /* 
+        This function will request Chainlink Oracle data. The purpose of the function is to:
+        * Create a Chainlink Request
+        * Receive API Response
+    */
+    function requestImpactScore() public returns (bytes32 ImpactScore){
+
     }
 }
