@@ -14,6 +14,17 @@ contract customTokenUriHook is ILockTokenURIHook {
       for(uint i=0;i<whitelist.length;i++)
       accessList[msg.sender].push(whitelist[i]);
     }
+    function removeAccess(address profile) public {
+      uint256 length=accessList[msg.sender].length;
+      for(uint i=0; i<length;i++)
+      {
+      if(accessList[msg.sender][i]==profile)
+      {
+        accessList[msg.sender][i]=accessList[msg.sender][length-1];
+        accessList[msg.sender].pop();
+      }
+      }
+    }
     function setPrivacy(bool value) public {
       if(value==true){
         setScore(msg.sender,0);
