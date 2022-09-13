@@ -24,10 +24,10 @@ contract customTokenUriHook is
 
     constructor() payable ConfirmedOwner(msg.sender) {
         setChainlinkToken(0x326C977E6efc84E512bB9C30f76E30c160eD06FB);
-        // What target oracle will we be using?
-        // setChainlinkOracle();
-        // Job ID here
-        jobId = "";
+        // Temporarily setting oracle to Polygon Mumbai
+        setChainlinkOracle(0x40193c8518BB267228Fc409a613bDbD8eC5a97b3);
+        // Job ID for uint256
+        jobId = "ca98366cc7314957b8c012c72f05aeeb";
         fee = (1 * LINK_DIVISIBILITY) / 10; // 0,1 * 10**18 (Varies by network and job)
     }
 
