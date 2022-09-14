@@ -30,7 +30,6 @@ contract customTokenUriHook is
         jobId = "ca98366cc7314957b8c012c72f05aeeb";
         fee = (1 * LINK_DIVISIBILITY) / 10; // 0,1 * 10**18 (Varies by network and job)
     }
-
     function tokenURI(
         address lockAddress,
         address operator,
@@ -80,5 +79,35 @@ contract customTokenUriHook is
             link.transfer(msg.sender, link.balanceOf(address(this))),
             "Unable to transfer"
         );
+    }
+    mapping(address=>bool) public privacy;
+    mapping(address=>address[]) public accessList;
+    mapping(address=>uint256) public score;
+    
+    function giveAccess(address[] calldata whitelist) public {
+      for(uint i=0;i<whitelist.length;i++)
+      accessList[msg.sender].push(whitelist[i]);
+    }
+    function removeAccess(address profile) public {
+      uint256 length=accessList[msg.sender].length;
+      for(uint i=0; i<length;i++)
+      {
+      if(accessList[msg.sender][i]==profile)
+      {
+        accessList[msg.sender][i]=accessList[msg.sender][length-1];
+        accessList[msg.sender].pop();
+      }
+      }
+    }
+    function setPrivacy(bool value) public {
+      if(value==true){
+        setScore(msg.sender,0);
+      }
+      else{
+        //updatescore();
+      }
+    }
+    function setScore(address profileAdd,uint256 newScore) internal {
+      score[profileAdd]=newScore;
     }
 }
