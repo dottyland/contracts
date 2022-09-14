@@ -15,7 +15,7 @@ contract customTokenUriHook is
     ConfirmedOwner
 {
     using Chainlink for Chainlink.Request;
-
+   
     // Chainlink variables
     uint256 public score;
     bytes32 private jobId;
