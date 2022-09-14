@@ -7,6 +7,7 @@ import "@unlock-protocol/contracts/dist/Hooks/ILockTokenURIHook.sol";
 // Chainlink imports
 import "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
 import "@chainlink/contracts/src/v0.8/ConfirmedOwner.sol";
+import "@unlock-protocol/contracts/dist/PublicLock/IPublicLockV10.sol";
 
 contract customTokenUriHook is
     ILockTokenURIHook,
@@ -14,14 +15,27 @@ contract customTokenUriHook is
     ConfirmedOwner
 {
     using Chainlink for Chainlink.Request;
-
+   
     // Chainlink variables
     uint256 public score;
     bytes32 private jobId;
     uint256 private fee;
+    address private LockAddress;
+    mapping(uint256=>bool) public privacyList;
+    mapping(uint256=>address[]) public accessList;
+    mapping(uint256=>uint256) public scoreList;
+
+    modifier tokenOwner(uint256 nftId) {
+      IPublicLockV10 Lock= IPublicLockV10(LockAddress);
+      require(msg.sender==Lock.ownerOf(nftId));
+      _;
+    }
 
     event RequestScore(bytes32 indexed requestId, uint256 score);
 
+    function isPrivate(uint256 keyId) public view returns(bool){
+      return privacyList[keyId];
+    }
     constructor() payable ConfirmedOwner(msg.sender) {
         setChainlinkToken(0x326C977E6efc84E512bB9C30f76E30c160eD06FB);
         // Temporarily setting oracle to Polygon Mumbai
@@ -80,34 +94,32 @@ contract customTokenUriHook is
             "Unable to transfer"
         );
     }
-    mapping(address=>bool) public privacy;
-    mapping(address=>address[]) public accessList;
-    mapping(address=>uint256) public score;
+
     
-    function giveAccess(address[] calldata whitelist) public {
+    function giveAccess(uint256 tokenId,address[] calldata whitelist) public tokenOwner(tokenId) {
       for(uint i=0;i<whitelist.length;i++)
-      accessList[msg.sender].push(whitelist[i]);
+      accessList[tokenId].push(whitelist[i]);
     }
-    function removeAccess(address profile) public {
-      uint256 length=accessList[msg.sender].length;
+    function removeAccess(uint256 tokenId,address profile) public tokenOwner(tokenId){
+      uint256 length=accessList[tokenId].length;
       for(uint i=0; i<length;i++)
       {
-      if(accessList[msg.sender][i]==profile)
+      if(accessList[tokenId][i]==profile)
       {
-        accessList[msg.sender][i]=accessList[msg.sender][length-1];
-        accessList[msg.sender].pop();
+        accessList[tokenId][i]=accessList[tokenId][length-1];
+        accessList[tokenId].pop();
       }
       }
     }
-    function setPrivacy(bool value) public {
+    function setPrivacy(uint256 tokenId,bool value) public tokenOwner(tokenId){
       if(value==true){
-        setScore(msg.sender,0);
+        setScore(tokenId,0);
       }
       else{
         //updatescore();
       }
     }
-    function setScore(address profileAdd,uint256 newScore) internal {
-      score[profileAdd]=newScore;
+    function setScore(uint256 tokenId,uint256 newScore) internal tokenOwner(tokenId) {
+      scoreList[tokenId]=newScore;
     }
 }
