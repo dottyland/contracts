@@ -7,6 +7,7 @@ import "@unlock-protocol/contracts/dist/Hooks/ILockTokenURIHook.sol";
 // Chainlink imports
 import "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
 import "@chainlink/contracts/src/v0.8/ConfirmedOwner.sol";
+import "@unlock-protocol/contracts/dist/PublicLock/IPublicLockV10.sol";
 
 contract customTokenUriHook is
     ILockTokenURIHook,
@@ -19,17 +20,33 @@ contract customTokenUriHook is
     uint256 public score;
     bytes32 private jobId;
     uint256 private fee;
+    address private LockAddress;
+    uint256 public tokenId;
+    mapping(uint256 => bool) public privacyList;
+    mapping(uint256 => address[]) public accessList;
+    mapping(uint256 => uint256) public scoreList;
+
+    modifier tokenOwner(uint256 nftId) {
+        IPublicLockV10 Lock = IPublicLockV10(LockAddress);
+        require(msg.sender == Lock.ownerOf(nftId));
+        _;
+    }
 
     event RequestScore(bytes32 indexed requestId, uint256 score);
+
+    function isPrivate(uint256 keyId) public view returns (bool) {
+        return privacyList[keyId];
+    }
 
     constructor() payable ConfirmedOwner(msg.sender) {
         setChainlinkToken(0x326C977E6efc84E512bB9C30f76E30c160eD06FB);
         // Temporarily setting oracle to Polygon Mumbai
         setChainlinkOracle(0x40193c8518BB267228Fc409a613bDbD8eC5a97b3);
-        // Job ID for uint256
-        jobId = "ca98366cc7314957b8c012c72f05aeeb";
+        // Job ID for uint256; adding multiple parameters
+        jobId = "53f9755920cd451a8fe46f5087468395";
         fee = (1 * LINK_DIVISIBILITY) / 10; // 0,1 * 10**18 (Varies by network and job)
     }
+
     function tokenURI(
         address lockAddress,
         address operator,
@@ -50,11 +67,17 @@ contract customTokenUriHook is
             this.receiveImpactScore.selector
         );
 
-        // Setting URL to perform GET request
-        req.add("get", "https://impact-api.vercel.app/api/abc");
+        // Setting URL to perform GET request for score
+        req.add("getScore", "https://impact-api.vercel.app/api/abc");
 
-        // Setting the path for the JSON response
-        req.add("path", "body");
+        // Setting the path for the score JSON response
+        req.add("pathScore", "x");
+
+        // Setting URL to perform GET request for tokenID
+        req.add("getTokenID", "x");
+
+        // Setting the path for the tokenID JSON response
+        req.add("pathTid", "x");
 
         // add any data cleaning here
         return sendChainlinkRequest(req, fee);
@@ -65,12 +88,14 @@ contract customTokenUriHook is
       * Receive calculated Impact Score
       * execute an action (mint an NFT)
   */
-    function receiveImpactScore(bytes32 _requestId, uint256 _score)
-        public
-        recordChainlinkFulfillment(_requestId)
-    {
+    function receiveImpactScore(
+        bytes32 _requestId,
+        uint256 _score,
+        uint256 _tokenId
+    ) public recordChainlinkFulfillment(_requestId) {
         emit RequestScore(_requestId, _score);
         score = _score;
+        tokenId = _tokenId;
     }
 
     function withdrawLink() public onlyOwner {
@@ -80,34 +105,43 @@ contract customTokenUriHook is
             "Unable to transfer"
         );
     }
-    mapping(address=>bool) public privacy;
-    mapping(address=>address[]) public accessList;
-    mapping(address=>uint256) public score;
-    
-    function giveAccess(address[] calldata whitelist) public {
-      for(uint i=0;i<whitelist.length;i++)
-      accessList[msg.sender].push(whitelist[i]);
+
+    function giveAccess(uint256 _tokenId, address[] calldata whitelist)
+        public
+        tokenOwner(_tokenId)
+    {
+        for (uint256 i = 0; i < whitelist.length; i++)
+            accessList[_tokenId].push(whitelist[i]);
     }
-    function removeAccess(address profile) public {
-      uint256 length=accessList[msg.sender].length;
-      for(uint i=0; i<length;i++)
-      {
-      if(accessList[msg.sender][i]==profile)
-      {
-        accessList[msg.sender][i]=accessList[msg.sender][length-1];
-        accessList[msg.sender].pop();
-      }
-      }
+
+    function removeAccess(uint256 _tokenId, address profile)
+        public
+        tokenOwner(_tokenId)
+    {
+        uint256 length = accessList[_tokenId].length;
+        for (uint256 i = 0; i < length; i++) {
+            if (accessList[_tokenId][i] == profile) {
+                accessList[_tokenId][i] = accessList[_tokenId][length - 1];
+                accessList[_tokenId].pop();
+            }
+        }
     }
-    function setPrivacy(bool value) public {
-      if(value==true){
-        setScore(msg.sender,0);
-      }
-      else{
-        //updatescore();
-      }
+
+    function setPrivacy(uint256 _tokenId, bool value)
+        public
+        tokenOwner(_tokenId)
+    {
+        if (value == true) {
+            setScore(_tokenId, 0);
+        } else {
+            //updatescore();
+        }
     }
-    function setScore(address profileAdd,uint256 newScore) internal {
-      score[profileAdd]=newScore;
+
+    function setScore(uint256 _tokenId, uint256 newScore)
+        internal
+        tokenOwner(_tokenId)
+    {
+        scoreList[_tokenId] = newScore;
     }
 }
