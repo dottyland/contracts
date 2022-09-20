@@ -8,6 +8,8 @@ import "@unlock-protocol/contracts/dist/Hooks/ILockTokenURIHook.sol";
 import "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
 import "@chainlink/contracts/src/v0.8/ConfirmedOwner.sol";
 import "@unlock-protocol/contracts/dist/PublicLock/IPublicLockV10.sol";
+import "@openzeppelin/contracts/utils/Base64.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
 contract customTokenUriHook is
     ILockTokenURIHook,
@@ -22,6 +24,7 @@ contract customTokenUriHook is
     uint256 private fee;
     address private LockAddress;
     uint256 public tokenId;
+    address nftContractAddress;
     mapping(uint256 => bool) public privacyList;
     mapping(uint256 => address[]) public accessList;
     mapping(uint256 => uint256) public scoreList;
@@ -46,14 +49,6 @@ contract customTokenUriHook is
         jobId = "53f9755920cd451a8fe46f5087468395";
         fee = (1 * LINK_DIVISIBILITY) / 10; // 0,1 * 10**18 (Varies by network and job)
     }
-
-    function tokenURI(
-        address lockAddress,
-        address operator,
-        address owner,
-        uint256 keyId,
-        uint256 expirationTimestamp
-    ) external view returns (string memory) {}
 
     /* 
         This function will request Chainlink Oracle data. The purpose of the function is to:
@@ -143,5 +138,84 @@ contract customTokenUriHook is
         tokenOwner(_tokenId)
     {
         scoreList[_tokenId] = newScore;
+    }
+
+    // the setNftContractAddress function sets our contract address to the impactNFT so that we can create the tokenURI. The contract address is to be passed here
+    function setNftContractAddress(address _contractAddress) public {
+        nftContractAddress = _contractAddress;
+    }
+
+    // The getSVG() function will take in the score, privacy boolean, background color, and tokenId to generate an abi encoded string with SVG data
+    function getSVG(
+        uint256 _score,
+        bool _privacy,
+        string _color,
+        uint256 _tokenId
+    ) {
+        string[7] memory parts;
+        parts[0] = "<svg viewBox='0 0 400 400'><style>.a { fill: ";
+        parts[1] = _color;
+        parts[2] = "#0000; font-size: 18px; }</style><text x='10' y='10' class='a'>Token #";
+        parts[3] = string(_tokenId);
+        if(_privacy){
+            parts[4] = "";
+            parts[5] = "";
+        } else {
+            parts[4] = "</text><text x='350' y='350' class='a'>ImpactScore: ";
+            parts[5] = string(_score);
+        }
+        parts[6] = "</text></svg>";
+
+        return string(abi.encodePacked(parts[0],parts[1],parts[2],parts[3],parts[4],parts[5],parts[6]);)
+    }
+
+    function tokenURI(
+        address lockAddress,
+        address operator,
+        address owner,
+        uint256 keyId,
+        uint256 expirationTimestamp
+    ) external view returns (string memory) {
+        // get lock instance
+        IPublicLockV10 lock = IPublicLockV10(lockAddress);
+
+        // if NFT contract is not set, returns default lock tokenURI
+        if (nftContractAddress == address(0)) {
+            return lock.tokenURI(keyId);
+        }
+
+        // check nft ownership
+        IERC721 nft = IERC721(nftContractAddress);
+        bool ownsNft = nft.balanceOf(owner) > 0;
+        console.log("== owns nft:", ownsNft);
+
+        // check key validity
+        bool hasValidKey = lock.getHasValidKey(owner);
+        console.log("== has valid key:", hasValidKey);
+
+        // calculate background color from score
+        // TODO: find a way to make this transparent so that the SVG digits can lay on top of the video NFT
+
+        string memory color = "grey";
+        if (score > 50) {
+            color = "green";
+        } else {
+            color = "red";
+        }
+
+        string memory svgData = getSVG(score, isPrivate(keyId), color, tokenId);
+
+        string memory json = Base64.encode(
+            bytes(
+                string(
+                    abi.encodePacked(
+                        '{"name": "Impact NFT", "description": "", "image_data": "',
+                        bytes(svgData),
+                        '"}'
+                    )
+                )
+            )
+        );
+        return string(abi.encodePacked("data:application/json;base64,", json));
     }
 }
