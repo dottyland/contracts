@@ -1,50 +1,63 @@
+//Author Dottyv0.2
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.9;
+pragma solidity ^0.8.0;
 
 // Import this file to use console.log
 import "hardhat/console.sol";
 import "@unlock-protocol/contracts/dist/Hooks/ILockTokenURIHook.sol";
+import "@unlock-protocol/contracts/dist/Hooks/ILockKeyPurchaseHook.sol";
 // Chainlink imports
 import "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
 import "@chainlink/contracts/src/v0.8/ConfirmedOwner.sol";
 import "@unlock-protocol/contracts/dist/PublicLock/IPublicLockV10.sol";
+import "@openzeppelin/contracts/utils/Base64.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 
 contract customTokenUriHook is
     ILockTokenURIHook,
     ChainlinkClient,
-    ConfirmedOwner
+    ConfirmedOwner,
+    ILockKeyPurchaseHook
 {
     using Chainlink for Chainlink.Request;
    
     // Chainlink variables
-    uint256 public score;
     bytes32 private jobId;
     uint256 private fee;
     address private LockAddress;
-    uint256 public tokenId;
-    mapping(uint256 => bool) public privacyList;
-    mapping(uint256 => address[]) public accessList;
-    mapping(uint256 => uint256) public scoreList;
+    string public url;
+    bytes32 public request_Id;
+    address public target;
+    mapping(address => bool) public privacyList;
+    mapping(address => address[]) public accessList;
+    mapping(address => uint256) public scoreList;
+    mapping(bytes32 => address) public tracker;
 
-    modifier tokenOwner(uint256 nftId) {
+    modifier tokenOwner() {
         IPublicLockV10 Lock = IPublicLockV10(LockAddress);
-        require(msg.sender == Lock.ownerOf(nftId));
+        require(Lock.isOwner(msg.sender)==true);
         _;
     }
 
     event RequestScore(bytes32 indexed requestId, uint256 score);
 
-    function isPrivate(uint256 keyId) public view returns (bool) {
-        return privacyList[keyId];
+    function geturl() public view returns(string memory) {
+        return url;
+    }
+    function isPrivate(address owner) public view returns (bool) {
+        return privacyList[owner];
     }
 
     constructor() payable ConfirmedOwner(msg.sender) {
         setChainlinkToken(0x326C977E6efc84E512bB9C30f76E30c160eD06FB);
         // Temporarily setting oracle to Polygon Mumbai
-        setChainlinkOracle(0x40193c8518BB267228Fc409a613bDbD8eC5a97b3);
+        setChainlinkOracle(0xCC79157eb46F5624204f47AB42b3906cAA40eaB7);
         // Job ID for uint256; adding multiple parameters
-        jobId = "53f9755920cd451a8fe46f5087468395";
+        jobId = "ca98366cc7314957b8c012c72f05aeeb";
         fee = (1 * LINK_DIVISIBILITY) / 10; // 0,1 * 10**18 (Varies by network and job)
+    }
+    function setLockAddress(address lockAddress) public onlyOwner {
+        LockAddress=lockAddress;
     }
 
     function tokenURI(
@@ -53,31 +66,74 @@ contract customTokenUriHook is
         address owner,
         uint256 keyId,
         uint256 expirationTimestamp
-    ) external view returns (string memory) {}
+    ) external view returns (string memory) {
+        if(privacyList[owner]==true)
+        {
+            bytes memory json = 
+                    abi.encodePacked(
+                        '{',
+                        '"name": "Impact NFT",',
+                        ' "description": "Impact",',
+                        ' "image_data": "Hello",',
+                        '"attributes" :',
+                        '[{',
+                        ' "score": "Private"',
+                        '}]',
+                        '}'                 
+        );
+                return string(
+                    abi.encodePacked(
+                        "data:application/json;base64,",
+                        Base64.encode(json)
+                    )
+                );
+        }else {
+            string memory score=Strings.toString(scoreList[owner]);
+             bytes memory json = 
+                    abi.encodePacked(
+                        '{',
+                        '"name": "Impact NFT",',
+                        ' "description": "Impact",',
+                        ' "image_data": "Hello",',
+                        '"attributes" :',
+                        '[{',
+                        '"public:"ye",',
+                         ' "score": "',score,'"',
+                        '}]',
+                        '}'                 
+        );
+                return string(
+                    abi.encodePacked(
+                        "data:application/json;base64,",
+                        Base64.encode(json)
+                    )
+                );
+        }
+        }
 
     /* 
         This function will request Chainlink Oracle data. The purpose of the function is to:
         * Create a Chainlink Request
         * Receive API Response
     */
-    function requestImpactScore() public returns (bytes32 requestId) {
+    function requestImpactScore(address owner) internal returns (bytes32 requestId) {
+        
         Chainlink.Request memory req = buildChainlinkRequest(
             jobId,
             address(this),
             this.receiveImpactScore.selector
         );
-
+        string memory ownerstring= Strings.toHexString(uint256(uint160(owner)), 20);
         // Setting URL to perform GET request for score
-        req.add("getScore", "https://impact-api.vercel.app/api/abc");
+        url=string(abi.encodePacked("https://impact-api.vercel.app/api/abc/",ownerstring));
+        req.add("get", url);
 
         // Setting the path for the score JSON response
-        req.add("pathScore", "x");
-
-        // Setting URL to perform GET request for tokenID
-        req.add("getTokenID", "x");
+        req.add("path", "score");
+        int256 multiplier=1;
+        req.addInt("times",multiplier);
 
         // Setting the path for the tokenID JSON response
-        req.add("pathTid", "x");
 
         // add any data cleaning here
         return sendChainlinkRequest(req, fee);
@@ -90,12 +146,13 @@ contract customTokenUriHook is
   */
     function receiveImpactScore(
         bytes32 _requestId,
-        uint256 _score,
-        uint256 _tokenId
+        uint256 _score
     ) public recordChainlinkFulfillment(_requestId) {
         emit RequestScore(_requestId, _score);
-        score = _score;
-        tokenId = _tokenId;
+        address _target = tracker[_requestId];
+        target = _target;
+       scoreList[target]=_score;
+       delete(tracker[_requestId]);
     }
 
     function withdrawLink() public onlyOwner {
@@ -105,43 +162,60 @@ contract customTokenUriHook is
             "Unable to transfer"
         );
     }
+    function getIt(address owner) public view returns(uint256 score){
+        return scoreList[owner];
+    }
 
-    function giveAccess(uint256 _tokenId, address[] calldata whitelist)
+    function giveAccess( address[] calldata whitelist)
         public
-        tokenOwner(_tokenId)
+        tokenOwner
     {
         for (uint256 i = 0; i < whitelist.length; i++)
-            accessList[_tokenId].push(whitelist[i]);
+            accessList[msg.sender].push(whitelist[i]);
     }
 
     function removeAccess(uint256 _tokenId, address profile)
         public
-        tokenOwner(_tokenId)
+        tokenOwner
     {
-        uint256 length = accessList[_tokenId].length;
+        uint256 length = accessList[msg.sender].length;
         for (uint256 i = 0; i < length; i++) {
-            if (accessList[_tokenId][i] == profile) {
-                accessList[_tokenId][i] = accessList[_tokenId][length - 1];
-                accessList[_tokenId].pop();
+            if (accessList[msg.sender][i] == profile) {
+                accessList[msg.sender][i] = accessList[msg.sender][length - 1];
+                accessList[msg.sender].pop();
             }
         }
     }
 
     function setPrivacy(uint256 _tokenId, bool value)
         public
-        tokenOwner(_tokenId)
+        tokenOwner
     {
+        privacyList[msg.sender]==value;
         if (value == true) {
-            setScore(_tokenId, 0);
+            scoreList[msg.sender]=0;
         } else {
-            //updatescore();
+            requestImpactScore(msg.sender);
         }
     }
-
-    function setScore(uint256 _tokenId, uint256 newScore)
-        internal
-        tokenOwner(_tokenId)
-    {
-        scoreList[_tokenId] = newScore;
+    function keyPurchasePrice(
+        address from,
+    address recipient,
+    address referrer,
+    bytes calldata data
+  ) external view
+    returns (uint minKeyPrice){
+        return 0;
     }
+    function onKeyPurchase(address from,
+    address recipient,
+    address referrer,
+    bytes calldata data,
+    uint minKeyPrice,
+    uint pricePaid
+  ) external {
+    bytes32 id=requestImpactScore(recipient);
+    tracker[id]=recipient;
+    request_Id=id;
+  }
 }

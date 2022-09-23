@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@chainlink/contracts": "^0.4.1",
+    "@openzeppelin/contracts": "^4.7.3",
     "@unlock-protocol/contracts": "0.0.8"
   }
 }
